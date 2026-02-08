@@ -117,16 +117,42 @@ def _open_spreadsheet():
         "https://www.googleapis.com/auth/drive",
     ]
 
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes
-    )
+    if "gcp_service_account" not in st.secrets:
+        st.error("❌ Missing Streamlit secret: [gcp_service_account].")
+        st.stop()
 
-    client = gspread.authorize(creds)
-    return client.open_by_key(GSHEET_ID)
+    try:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=scopes
+        )
+        client = gspread.authorize(creds)
+
+        # Debug: show which account is being used (safe)
+        st.info(f"Using service account: {st.secrets['gcp_service_account'].get('client_email', '')}")
+
+        # Try opening sheet
+        sh = client.open_by_key(GSHEET_ID)
+        return sh
+
+    except Exception as e:
+        st.error("❌ Failed to open Google Sheet by key.")
+        import traceback
+        st.text(traceback.format_exc())
+        st.stop()
+
     
 def get_sh():
-    _open_spreadsheet()
+    try:
+        sh = _open_spreadsheet()
+        if sh is None:
+            st.error("❌ Failed to open Google Sheet. Please check credentials + sheet access.")
+            st.stop()
+        return sh
+    except Exception as e:
+        st.error("❌ Google Sheets connection failed.")
+        st.exception(e)
+        st.stop()
 
 
 def ensure_headers(ws, headers):
@@ -136,15 +162,20 @@ def ensure_headers(ws, headers):
 
 
 def safe_worksheet(sh, name: str, headers: list[str]):
+    if sh is None:
+        st.error("❌ Spreadsheet handle is None. Google auth/open_by_key failed.")
+        st.stop()
+
     try:
         ws = sh.worksheet(name)
     except Exception:
-        ws = sh.add_worksheet(title=name, rows=4000, cols=max(10, len(headers) + 2))
+        st.error(f"❌ Worksheet '{name}' not found.")
         st.info(
-            "Create it manually in Google Sheet with these headers in Row 1:\n"
+            f"Create a sheet tab named '{name}' manually and set row 1 headers:\n\n"
             + ", ".join(headers)
         )
         st.stop()
+
     ensure_headers(ws, headers)
     return ws
 
