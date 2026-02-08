@@ -112,7 +112,7 @@ def clean_rows(rows, key1: str, key2: str):
 # GOOGLE (connection cached, NOT data)
 # =========================
 @st.cache_resource
-def _open_spreadsheet(sheet_id: str):
+def _open_spreadsheet():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
@@ -124,10 +124,10 @@ def _open_spreadsheet(sheet_id: str):
     )
 
     client = gspread.authorize(creds)
-    return client.open_by_key(sheet_id)
+    return client.open_by_key(GSHEET_ID)
     
 def get_sh():
-    _open_spreadsheet(GSHEET_ID)
+    _open_spreadsheet()
 
 
 def ensure_headers(ws, headers):
