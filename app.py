@@ -127,10 +127,7 @@ def _open_spreadsheet():
             scopes=scopes
         )
         client = gspread.authorize(creds)
-
-        # Debug: show which account is being used (safe)
-        st.info(f"Using service account: {st.secrets['gcp_service_account'].get('client_email', '')}")
-
+       
         # Try opening sheet
         sh = client.open_by_key(GSHEET_ID)
         return sh
