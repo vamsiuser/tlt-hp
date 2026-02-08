@@ -23,6 +23,10 @@ from google.oauth2.service_account import Credentials
 import urllib.parse
 import webbrowser
 
+from google.oauth2.service_account import Credentials
+import streamlit as st
+import gspread
+
 
 # =========================
 # CONFIG
@@ -117,7 +121,20 @@ def _open_spreadsheet(creds_path: str, sheet_id: str):
     client = gspread.authorize(creds)
     return client.open_by_key(sheet_id)
 
+def _open_spreadsheet(sheet_id: str):
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
 
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+
+    client = gspread.authorize(creds)
+    return client.open_by_key(sheet_id)
+    
 def get_sh():
     if not os.path.exists(GSHEET_CREDS):
         st.error(f"❌ Service account file not found: {GSHEET_CREDS}")
