@@ -141,6 +141,11 @@ def safe_worksheet(sh, name: str, headers: list[str]):
         ws = sh.worksheet(name)
     except Exception:
         ws = sh.add_worksheet(title=name, rows=4000, cols=max(10, len(headers) + 2))
+        st.info(
+            "Create it manually in Google Sheet with these headers in Row 1:\n"
+            + ", ".join(headers)
+        )
+        st.stop()
     ensure_headers(ws, headers)
     return ws
 
