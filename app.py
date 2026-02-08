@@ -34,7 +34,6 @@ import gspread
 st.set_page_config(page_title="HP Bunk Daily Calculator", layout="wide")
 
 GSHEET_ID = "1zW5y3xMNCFd5cvbaIy7VKkOD3aUDtAHbEXNytqWNYTE"
-GSHEET_CREDS = "google_service_account.json"  # service account json path
 
 SUMMARY_SHEET = "Summary"
 SETTINGS_SHEET = "Settings"
