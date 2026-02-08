@@ -112,15 +112,6 @@ def clean_rows(rows, key1: str, key2: str):
 # GOOGLE (connection cached, NOT data)
 # =========================
 @st.cache_resource
-def _open_spreadsheet(creds_path: str, sheet_id: str):
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client.open_by_key(sheet_id)
-
 def _open_spreadsheet(sheet_id: str):
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
