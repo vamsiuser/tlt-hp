@@ -136,15 +136,7 @@ def _open_spreadsheet(sheet_id: str):
     return client.open_by_key(sheet_id)
     
 def get_sh():
-    if not os.path.exists(GSHEET_CREDS):
-        st.error(f"❌ Service account file not found: {GSHEET_CREDS}")
-        st.stop()
-    try:
-        return _open_spreadsheet(GSHEET_CREDS, GSHEET_ID)
-    except Exception as e:
-        st.error("❌ Google Sheets connection failed.")
-        st.exception(e)
-        st.stop()
+    _open_spreadsheet(GSHEET_ID)
 
 
 def ensure_headers(ws, headers):
