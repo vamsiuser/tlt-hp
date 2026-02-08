@@ -1206,7 +1206,7 @@ with tab_ledger:
                     f"— SASI DHAR"
                 )
 
-                whatsapp_share(wa_msg_ledger)
+                st.link_button("📤 WhatsApp", whatsapp_url(wa_msg_ledger), use_container_width=True)
             except Exception as e:
                 st.error(f"❌ Failed: {e}")
 
