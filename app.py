@@ -1183,6 +1183,37 @@ with tab_ledger:
                 st.metric("Outstanding ₹", f"{money(cur):.2f}")
         else:
             st.info("Select a customer to view outstanding.")
+        
+        st.divider()
+        st.markdown("### 📢 Notify Customer on WhatsApp")
+
+        # Balance line (based on current selected customer from left side)
+        if customer and isinstance(customer, str) and customer.strip():
+            bal = cur  # cur is already calculated above in your Current Customer Status
+
+            if bal > 0:
+                status_line = f"Outstanding Amount: ₹ {money(bal):.2f}"
+            elif bal < 0:
+                status_line = f"Advance Balance: ₹ {money(abs(bal)):.2f}"
+            else:
+                status_line = "No pending balance."
+
+            default_msg = (
+                f"⛽ HP PETROL BUNK\n\n"
+                f"Customer: {customer.strip()}\n"
+                f"{status_line}\n\n"
+                f"Please contact us if you have any questions.\n"
+                f"— HP PETROL BUNK"
+            )
+
+            st.link_button(
+                "📤 Send WhatsApp (Notify Only)",
+                whatsapp_url(default_msg),
+                use_container_width=True,
+            )
+        else:
+            st.info("Select a customer to enable WhatsApp notification.")
+
 
     if do_apply:
         if not entry_d or not isinstance(entry_d, (date, pd.Timestamp)):
