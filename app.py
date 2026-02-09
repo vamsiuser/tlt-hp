@@ -450,7 +450,7 @@ def apply_ledger_transaction(ledger_df: pd.DataFrame, customer: str, typ: str, a
     if typ == "CREDIT":
         after = before + amount
     elif typ == "PAYMENT":
-        after = max(before - amount)
+        after = before - amount
     else:
         raise ValueError("Type must be CREDIT or PAYMENT")
 
@@ -1088,7 +1088,7 @@ with tab_entry:
             data=png_bytes(report),
             file_name=f"hp_bunk_{report['date']}.png",
             mime="image/png",
-            use_container_width=True,
+            width='stretch',
         )
 
     with c2:
@@ -1097,7 +1097,7 @@ with tab_entry:
             data=pdf_bytes(report),
             file_name=f"hp_bunk_{report['date']}.pdf",
             mime="application/pdf",
-            use_container_width=True,
+            width='stretch',
         )
 
     with c3:
@@ -1108,13 +1108,13 @@ with tab_entry:
                     data=f.read(),
                     file_name="hp_bunk_daily.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+                    width='stretch',
                 )
         else:
             st.caption("Excel after first Save")
 
     with c4:
-        st.link_button("📤 WhatsApp", whatsapp_url(wa_msg), use_container_width=True)
+        st.link_button("📤 WhatsApp", whatsapp_url(wa_msg), width='stretch')
 
 # =========================
 # LEDGER TAB
@@ -1139,10 +1139,16 @@ with tab_ledger:
 
     ledger_df = st.session_state.get("_ledger_df", pd.DataFrame(columns=["Customer", "Outstanding"]))
 
-    total_outstanding = float(pd.to_numeric(ledger_df.get("Outstanding", 0), errors="coerce").fillna(0).clip(lower=0).sum())
-    c1, c2 = st.columns(2)
-    c1.metric("Total Outstanding (₹)", f"{money(total_outstanding):.2f}")
-    c2.metric("Customers in Ledger", f"{len(ledger_df) if ledger_df is not None else 0}")
+    total_outstanding = pd.to_numeric(ledger_df.get("Outstanding", 0), errors="coerce").fillna(0.0)
+    
+    total_due = float(total_outstanding[total_outstanding > 0].sum())          # customers owe you
+    total_advance = float((-total_outstanding[total_outstanding < 0]).sum())   # you owe customers
+    net = float(total_outstanding.sum())   
+                              
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Due (₹)", f"{money(total_due):.2f}")
+    c2.metric("Total Advance (₹)", f"{money(total_advance):.2f}")
+    c3.metric("Net Balance (₹)", f"{money(net):.2f}")
 
     st.divider()
 
@@ -1171,7 +1177,10 @@ with tab_ledger:
             tmp["Customer"] = tmp.get("Customer", "").astype(str).str.strip()
             tmp["Outstanding"] = pd.to_numeric(tmp.get("Outstanding", 0), errors="coerce").fillna(0.0)
             cur = float(tmp.loc[tmp["Customer"].eq(customer.strip()), "Outstanding"].iloc[0]) if tmp["Customer"].eq(customer.strip()).any() else 0.0
-            st.metric("Outstanding (₹)", f"{money(cur):.2f}")
+            if cur < 0:
+                st.metric("Advance ₹", f"{money(abs(cur)):.2f}")
+            else:
+                st.metric("Outstanding ₹", f"{money(cur):.2f}")
         else:
             st.info("Select a customer to view outstanding.")
 
@@ -1206,7 +1215,7 @@ with tab_ledger:
                     f"— SASI DHAR"
                 )
 
-                st.link_button("📤 WhatsApp", whatsapp_url(wa_msg_ledger), use_container_width=True)
+                st.link_button("📤 WhatsApp", whatsapp_url(wa_msg_ledger), width='stretch')
             except Exception as e:
                 st.error(f"❌ Failed: {e}")
 
@@ -1228,7 +1237,7 @@ with tab_ledger:
         if sel_customer != "(All)":
             view = view[view["Customer"].astype(str).str.strip().eq(sel_customer)].copy()
 
-        st.dataframe(view, use_container_width=True, hide_index=True)
+        st.dataframe(view, width='stretch', hide_index=True)
 
         st.download_button(
             "⬇️ Download Ledger CSV",
@@ -1261,7 +1270,7 @@ with tab_ledger:
         if sel_log_customer != "(All)" and "Customer" in logs_view.columns:
             logs_view = logs_view[logs_view["Customer"].astype(str).str.strip().eq(sel_log_customer)].copy()
 
-        st.dataframe(logs_view, use_container_width=True, hide_index=True)
+        st.dataframe(logs_view, width='stretch', hide_index=True)
 
         st.download_button(
             "⬇️ Download Ledger Logs CSV",
