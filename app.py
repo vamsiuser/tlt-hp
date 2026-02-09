@@ -1209,7 +1209,7 @@ with tab_ledger:
             st.link_button(
                 "📤 Send WhatsApp (Notify Only)",
                 whatsapp_url(notify_msg),
-                use_container_width=True,
+                width='stretch',
             )
         else:
             st.info("Select a customer to enable WhatsApp notification.")
@@ -1309,43 +1309,337 @@ with tab_ledger:
             file_name="ledger_logs.csv",
             mime="text/csv",
         )
-
-
 # =========================
-# REPORTS TAB
+# REPORTS TAB (with sub-tabs)
 # =========================
 with tab_reports:
-    st.subheader("Reports (Read-only)")
-    st.caption("Click Refresh to load from Google.")
+    # ---------- helpers ----------
+    def _safe_json_load(x):
+        try:
+            if x is None:
+                return {}
+            if isinstance(x, dict):
+                return x
+            s = str(x).strip()
+            if not s:
+                return {}
+            return json.loads(s)
+        except Exception:
+            return {}
 
-    if "reports_df" not in st.session_state:
-        st.session_state.reports_df = None
+    def _safe_num(v):
+        try:
+            if v is None or (isinstance(v, str) and v.strip() == ""):
+                return 0.0
+            return float(v)
+        except Exception:
+            return 0.0
 
-    if st.button("🔄 Refresh Reports from Google", width='stretch'):
+    def _sum_col(df_, col):
+        return float(pd.to_numeric(df_.get(col, 0), errors="coerce").fillna(0).sum())
+
+    def _explode_details(month_df: pd.DataFrame):
+        credits, colls, exps = [], [], []
+        if month_df is None or month_df.empty:
+            return (
+                pd.DataFrame(columns=["date", "Customer", "Amount"]),
+                pd.DataFrame(columns=["date", "Customer", "Amount"]),
+                pd.DataFrame(columns=["date", "Expense", "Amount"]),
+            )
+
+        for _, r in month_df.iterrows():
+            ds = str(r.get("date", ""))[:10]
+            details = _safe_json_load(r.get("details_json", ""))
+
+            for item in (details.get("customer_credit_rows") or []):
+                cust = str(item.get("Customer", "")).strip()
+                amt = _safe_num(item.get("Amount"))
+                if cust and amt > 0:
+                    credits.append({"date": ds, "Customer": cust, "Amount": amt})
+
+            for item in (details.get("debt_collection_rows") or []):
+                cust = str(item.get("Customer", "")).strip()
+                amt = _safe_num(item.get("Amount"))
+                if cust and amt > 0:
+                    colls.append({"date": ds, "Customer": cust, "Amount": amt})
+
+            for item in (details.get("other_expense_rows") or []):
+                exp = str(item.get("Expense", "")).strip()
+                amt = _safe_num(item.get("Amount"))
+                if exp and amt > 0:
+                    exps.append({"date": ds, "Expense": exp, "Amount": amt})
+
+        cdf = pd.DataFrame(credits) if credits else pd.DataFrame(columns=["date", "Customer", "Amount"])
+        ldf = pd.DataFrame(colls) if colls else pd.DataFrame(columns=["date", "Customer", "Amount"])
+        edf = pd.DataFrame(exps) if exps else pd.DataFrame(columns=["date", "Expense", "Amount"])
+
+        for df_ in (cdf, ldf, edf):
+            if "Amount" in df_.columns:
+                df_["Amount"] = pd.to_numeric(df_["Amount"], errors="coerce").fillna(0.0)
+
+        return cdf, ldf, edf
+    
+    def _sheet_row_to_dict(headers: list[str], values: list[str]) -> dict:
+        if len(values) < len(headers):
+            values = values + [""] * (len(headers) - len(values))
+        return dict(zip(headers, values))
+
+
+    def fetch_summary_for_month(month_any_date: date) -> pd.DataFrame:
+        """Fetch ONLY the selected month rows from Google Summary sheet."""
         sh = get_sh()
         ws = safe_worksheet(sh, SUMMARY_SHEET, summary_headers())
-        st.session_state.reports_df = pd.DataFrame(ws.get_all_records())
-        st.success("Reports loaded.")
 
-    df = st.session_state.reports_df
-    if df is None or df.empty:
-        st.info("Click Refresh Reports to load data.")
+        headers = summary_headers()
+
+        # Get date column only (col A) to find which rows belong to the month
+        colA = ws.col_values(1)  # includes header at index 0
+        if len(colA) <= 1:
+            return pd.DataFrame(columns=headers)
+
+        # month boundaries
+        m1 = pd.Timestamp(month_any_date).replace(day=1).date()
+        m2 = (pd.Timestamp(m1) + pd.offsets.MonthBegin(1)).date()
+
+        # Find row numbers that match selected month
+        target_rows = []
+        for i, ds in enumerate(colA[1:], start=2):  # start=2 because sheet row 2 is first data
+            try:
+                d = parse_date(ds)
+                if m1 <= d < m2:
+                    target_rows.append(i)
+            except Exception:
+                continue
+
+        if not target_rows:
+            return pd.DataFrame(columns=headers)
+
+        # Read only the matching rows (min..max). Then filter again in python to be safe.
+        start_row = min(target_rows)
+        end_row = max(target_rows)
+        last_col = col_letter(len(headers))
+
+        values = ws.get(f"A{start_row}:{last_col}{end_row}")  # list of rows
+        rows = []
+        for row_vals in values:
+            row_dict = _sheet_row_to_dict(headers, row_vals)
+            try:
+                d = parse_date(row_dict.get("date", ""))
+                if m1 <= d < m2:
+                    rows.append(row_dict)
+            except Exception:
+                pass
+
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return pd.DataFrame(columns=headers)
+
+        # Normalize date
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.sort_values("date").reset_index(drop=True)
+        return df
+    
+    st.subheader("Reports")
+    pick = st.date_input("Pick any date in the month", value=date.today(), key="month_pick")
+    
+    if "reports_month_df" not in st.session_state:
+        st.session_state["reports_month_df"] = pd.DataFrame()
+    # ---------- load ----------
+    if st.button("🔄 Refresh Reports from Google", width='stretch'):
+        st.session_state["reports_month_df"] = fetch_summary_for_month(pick)
+        if st.session_state["reports_month_df"] is None or st.session_state["reports_month_df"].empty:
+            st.warning("No data found for selected month.")
+        else:
+            st.success(f"Loaded {len(st.session_state['reports_month_df'])} rows for {pd.Timestamp(pick).strftime('%Y-%m')}")
+
+        
+    month_df = st.session_state.get("reports_month_df", pd.DataFrame())
+    if month_df is None or month_df.empty:
+        st.info("Select a month and click 'Load Selected Month Report'.")
     else:
-        df2 = df.copy()
-        df2["date"] = pd.to_datetime(df2.get("date", ""), errors="coerce")
-
-        pick = st.date_input("Pick any date in the month", value=date.today(), key="month_pick")
         m1 = pd.Timestamp(pick).replace(day=1)
         m2 = (m1 + pd.offsets.MonthBegin(1))
+        
+        # Parse JSON once
+        credit_df, coll_df, exp_df = _explode_details(month_df)
 
-        month_df = df2[(df2["date"] >= m1) & (df2["date"] < m2)].copy().sort_values("date")
-        st.markdown("### Monthly Summary")
-        st.dataframe(month_df, width='stretch', hide_index=True)
+        # Sub-tabs
+        t_sum, t_cash, t_fuel, t_credit, t_exp, t_emp = st.tabs([
+            "📅 Monthly Summary",
+            "💰 Cash Flow",
+            "⛽ Fuel Performance",
+            "📌 Customer Credit",
+            "💸 Expense Breakdown",
+            "👤 Employee Performance",
+        ])
 
-        def safe_sum(col):
-            return float(pd.to_numeric(month_df.get(col, 0), errors="coerce").fillna(0).sum())
+        # =========================
+        # 1) Monthly Summary
+        # =========================
+        with t_sum:
+            st.markdown("### Monthly Summary (Table)")
+            st.dataframe(month_df, width='stretch', hide_index=True)
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Month Total Sales", f"₹ {money(safe_sum('total_sales')):.2f}")
-        c2.metric("Month Cash Deposit", f"₹ {money(safe_sum('cash_to_deposit')):.2f}")
-        c3.metric("Month QR Total", f"₹ {money(safe_sum('qr_amount')):.2f}")
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("Month Total Sales", f"₹ {money(_sum_col(month_df, 'total_sales')):.2f}")
+            s2.metric("Month Cash Deposit", f"₹ {money(_sum_col(month_df, 'cash_to_deposit')):.2f}")
+            s3.metric("Month QR Total", f"₹ {money(_sum_col(month_df, 'qr_amount')):.2f}")
+            s4.metric("Entries in Month", f"{len(month_df)}")
+
+        # =========================
+        # 2) Monthly Cash Flow
+        # =========================
+        with t_cash:
+            st.markdown("### Monthly Cash Flow")
+
+            total_sales = _sum_col(month_df, "total_sales")
+            qr_total = _sum_col(month_df, "qr_amount")
+            adv_total = _sum_col(month_df, "advance_paid")
+            owner_pp_total = _sum_col(month_df, "owner_phonepay_amount")
+            exp_total = _sum_col(month_df, "other_expenses_total")
+            credit_total = _sum_col(month_df, "customer_credit_total")
+            coll_total = _sum_col(month_df, "debt_collections_total")
+            ybal_total = _sum_col(month_df, "yesterday_balance_amount")
+            cash_total = _sum_col(month_df, "cash_to_deposit")
+
+            cf = pd.DataFrame([
+                ["Total Sales", total_sales],
+                ["(-) QR / UPI", -qr_total],
+                ["(-) Advance Paid", -adv_total],
+                ["(-) Owner PhonePay", -owner_pp_total],
+                ["(-) Expenses", -exp_total],
+                ["(-) Credit Given", -credit_total],
+                ["(+) Collections", coll_total],
+                ["(+) Yesterday Balance", ybal_total],
+                ["= Cash To Deposit (sum of days)", cash_total],
+            ], columns=["Item", "Amount"])
+
+            st.dataframe(cf, width='stretch', hide_index=True)
+
+        # =========================
+        # 3) Fuel Performance
+        # =========================
+        with t_fuel:
+            st.markdown("### Fuel Performance")
+
+            fuel_perf = pd.DataFrame([{
+                "Petrol Liters": _sum_col(month_df, "petrol_liters_sold"),
+                "Petrol Amount": _sum_col(month_df, "petrol_amount"),
+                "Diesel Liters": _sum_col(month_df, "diesel_liters_sold"),
+                "Diesel Amount": _sum_col(month_df, "diesel_amount"),
+                "Oil Packets": _sum_col(month_df, "oil_packets"),
+                "Oil Amount": _sum_col(month_df, "oil_amount"),
+            }])
+
+            st.dataframe(fuel_perf, width='stretch', hide_index=True)
+
+        # =========================
+        # 4) Customer Credit Summary (JSON)
+        # =========================
+        with t_credit:
+            st.markdown("### Customer Credit Summary (from Multiple Entries JSON)")
+
+            credit_by_cust = (
+                credit_df.groupby("Customer", as_index=False)["Amount"].sum()
+                .sort_values("Amount", ascending=False)
+            )
+            coll_by_cust = (
+                coll_df.groupby("Customer", as_index=False)["Amount"].sum()
+                .sort_values("Amount", ascending=False)
+            )
+
+            net_df = pd.merge(
+                credit_by_cust.rename(columns={"Amount": "Credit"}),
+                coll_by_cust.rename(columns={"Amount": "Collections"}),
+                on="Customer",
+                how="outer",
+            ).fillna(0.0)
+
+            net_df["Net (Credit-Collections)"] = net_df["Credit"] - net_df["Collections"]
+            net_df = net_df.sort_values("Net (Credit-Collections)", ascending=False).reset_index(drop=True)
+
+            if net_df.empty:
+                st.info("No credit/collection entries found for this month.")
+            else:
+                customers = ["(All)"] + net_df["Customer"].astype(str).tolist()
+                sel = st.selectbox("Filter customer", customers, index=0, key="reports_net_customer_filter")
+                view_net = net_df.copy()
+                if sel != "(All)":
+                    view_net = view_net[view_net["Customer"].astype(str).eq(sel)].copy()
+
+                k1, k2, k3 = st.columns(3)
+                total_positive = float(view_net["Net (Credit-Collections)"].clip(lower=0).sum())
+                total_negative = float((-view_net["Net (Credit-Collections)"]).clip(lower=0).sum())
+                k1.metric("Customers Owe You", f"₹ {money(total_positive):.2f}")
+                k2.metric("You Owe Customers (Advance)", f"₹ {money(total_negative):.2f}")
+                k3.metric("Net (Receive - Pay)", f"₹ {money(total_positive - total_negative):.2f}")
+
+                st.dataframe(view_net, width='stretch', hide_index=True)
+
+        # =========================
+        # 5) Expense Breakdown (JSON)
+        # =========================
+        with t_exp:
+            st.markdown("### Expense Breakdown (from Multiple Entries JSON)")
+
+            exp_by_name = (
+                exp_df.groupby("Expense", as_index=False)["Amount"].sum()
+                .sort_values("Amount", ascending=False)
+            )
+
+            if exp_by_name.empty:
+                st.info("No expense entries found for this month.")
+            else:
+                exp_names = ["(All)"] + exp_by_name["Expense"].astype(str).tolist()
+                sel_exp = st.selectbox("Filter expense", exp_names, index=0, key="reports_exp_filter")
+
+                exp_view = exp_by_name.copy()
+                if sel_exp != "(All)":
+                    exp_view = exp_view[exp_view["Expense"].astype(str).eq(sel_exp)].copy()
+
+                st.dataframe(exp_view, width='stretch', hide_index=True)
+
+                st.download_button(
+                    "⬇️ Download Expenses CSV",
+                    data=exp_view.to_csv(index=False).encode("utf-8"),
+                    file_name=f"expenses_{m1.strftime('%Y-%m')}.csv",
+                    mime="text/csv",
+                    width='stretch',
+                )
+
+        # =========================
+        # 6) Employee Performance
+        # =========================
+        with t_emp:
+            st.markdown("### Employee Performance")
+
+            emp_df = month_df.copy()
+            emp_df["employee_name"] = emp_df.get("employee_name", "").astype(str).str.strip()
+            emp_df = emp_df[emp_df["employee_name"] != ""].copy()
+
+            if emp_df.empty:
+                st.info("No employee names found in this month.")
+            else:
+                emp_perf = emp_df.groupby("employee_name", as_index=False).agg(
+                    Days=("date", "count"),
+                    Total_Sales=("total_sales", lambda x: float(pd.to_numeric(x, errors="coerce").fillna(0).sum())),
+                    Cash_Deposit=("cash_to_deposit", lambda x: float(pd.to_numeric(x, errors="coerce").fillna(0).sum())),
+                    QR_Total=("qr_amount", lambda x: float(pd.to_numeric(x, errors="coerce").fillna(0).sum())),
+                ).sort_values("Total_Sales", ascending=False).reset_index(drop=True)
+
+                emp_names = ["(All)"] + emp_perf["employee_name"].astype(str).tolist()
+                sel_emp = st.selectbox("Filter employee", emp_names, index=0, key="reports_emp_filter")
+
+                view_emp = emp_perf.copy()
+                if sel_emp != "(All)":
+                    view_emp = view_emp[view_emp["employee_name"].astype(str).eq(sel_emp)].copy()
+
+                st.dataframe(view_emp, width='stretch', hide_index=True)
+
+                st.download_button(
+                    "⬇️ Download Employee Performance CSV",
+                    data=view_emp.to_csv(index=False).encode("utf-8"),
+                    file_name=f"employee_performance_{m1.strftime('%Y-%m')}.csv",
+                    mime="text/csv",
+                    width='stretch',
+                )
