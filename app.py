@@ -1198,17 +1198,17 @@ with tab_ledger:
             else:
                 status_line = "No pending balance."
 
-            default_msg = (
+            notify_msg = (
                 f"⛽ HP PETROL BUNK\n\n"
                 f"Customer: {customer.strip()}\n"
                 f"{status_line}\n\n"
                 f"Please contact us if you have any questions.\n"
-                f"— HP PETROL BUNK"
+                f"— Thank for choosing HP"
             )
 
             st.link_button(
                 "📤 Send WhatsApp (Notify Only)",
-                whatsapp_url(default_msg),
+                whatsapp_url(notify_msg),
                 use_container_width=True,
             )
         else:
@@ -1243,7 +1243,7 @@ with tab_ledger:
                     f"Outstanding Before: ₹ {money(before):.2f}\n"
                     f"Outstanding After: ₹ {money(after):.2f}\n"
                     f"{'Notes: ' + notes if notes else ''}\n"
-                    f"— SASI DHAR"
+                    f" Thanks for choosing HP — SASI DHAR"
                 )
 
                 st.link_button("📤 WhatsApp", whatsapp_url(wa_msg_ledger), width='stretch')
