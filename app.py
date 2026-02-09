@@ -27,6 +27,9 @@ from google.oauth2.service_account import Credentials
 import streamlit as st
 import gspread
 
+import calendar
+from datetime import date
+
 
 # =========================
 # CONFIG
@@ -1440,7 +1443,25 @@ with tab_reports:
         return df
     
     st.subheader("Reports")
-    pick = st.date_input("Pick any date in the month", value=date.today(), key="month_pick")
+    m1, m2 = st.columns(2)
+
+    with m1:
+        sel_year = st.selectbox(
+            "Year",
+            options=list(range(date.today().year - 3, date.today().year + 1)),
+            index=3
+        )
+
+    with m2:
+        months = list(range(1, 13))
+        sel_month = st.selectbox(
+            "Month",
+            options=months,
+            format_func=lambda m: calendar.month_name[m],
+            index=date.today().month - 1
+        )
+    pick = date(sel_year, sel_month, 1)
+    # pick = st.date_input("Pick any date in the month", value=date.today(), key="month_pick")
     
     if "reports_month_df" not in st.session_state:
         st.session_state["reports_month_df"] = pd.DataFrame()
