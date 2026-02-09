@@ -54,6 +54,10 @@ def whatsapp_share(message: str):
     url = f"https://wa.me/?text={text}"
     webbrowser.open_new_tab(url)
     
+def whatsapp_url(message: str) -> str:
+    text = urllib.parse.quote(message)
+    return f"https://wa.me/?text={text}"
+    
 def n(x) -> float:
     try:
         return float(x)
@@ -1110,8 +1114,7 @@ with tab_entry:
             st.caption("Excel after first Save")
 
     with c4:
-        if st.button("📤 WhatsApp", use_container_width=True):
-            whatsapp_share(wa_msg)
+        st.link_button("📤 WhatsApp", whatsapp_url(wa_msg), use_container_width=True)
 
 # =========================
 # LEDGER TAB
@@ -1203,7 +1206,7 @@ with tab_ledger:
                     f"— SASI DHAR"
                 )
 
-                whatsapp_share(wa_msg_ledger)
+                st.link_button("📤 WhatsApp", whatsapp_url(wa_msg_ledger), use_container_width=True)
             except Exception as e:
                 st.error(f"❌ Failed: {e}")
 
