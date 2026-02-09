@@ -446,7 +446,7 @@ def apply_ledger_transaction(ledger_df: pd.DataFrame, customer: str, typ: str, a
     if typ == "CREDIT":
         after = before + amount
     elif typ == "PAYMENT":
-        after = max(0.0, before - amount)
+        after = max(before - amount)
     else:
         raise ValueError("Type must be CREDIT or PAYMENT")
 
